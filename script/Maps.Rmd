@@ -1,0 +1,73 @@
+---
+title: "Transmission Maps"
+author: "Andrew J K Conlan"
+Edited by: "Katriina Willgert"
+date: "09/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load_and_reshape}
+
+m1<-as.matrix(deer_intermed)
+diag(m1) <- 0
+locs <- st_coordinates(deer_location$geometry)
+
+m2<-as.matrix(dist(st_coordinates(deer_location$geometry))) #distance between deer 
+
+nn <- tibble(from=sapply(1:52,function(x){sort.int(m1[x,],index.return = T)$ix[2]}), to = 1:52)
+
+# Nearest sequence in terms of estimated number of transmissions
+nn <- nn %>% rowwise() %>% 
+  mutate(transm_events=m1[from,to], #distance in terms of number of transmission events
+          geo_dist=m2[from,to]) %>%  #geographical distance
+  ungroup()
+trans_net <- tbl_graph(edges=nn,directed=FALSE)
+
+#plot transmission events between locations
+trans_net %>% 
+  ggraph(x=locs[,1],y=locs[,2]) + 
+  geom_edge_arc(aes(col=transm_events),edge_width=1) + geom_node_point(size = 0.8) + scale_edge_colour_distiller(palette='Spectral', direction=1, name="Transmission\n events")
+  
+#read Iowa shapefiles downloaded from https://earthworks.stanford.edu/catalog/tufts-iacounties10
+Iowa<-st_read("./data/spatial/IowaCounties", stringsAsFactors = FALSE)
+#publisher: United States. Bureau of the Census. Geography Division, 2010
+
+#map of Iowa counties
+Iowa_map<-
+  geom_sf(data=Iowa,
+          fill= 'lightgray',
+          alpha=0.2,
+          colour="darkgray",
+          size=0.2)
+
+#Transmission events
+trans_net_fig<-trans_net %>% 
+  ggraph(x=locs[,1],y=locs[,2]) + 
+  Iowa_map+
+  geom_edge_arc(aes(col=transm_events),edge_width=1) + geom_node_point(size = 0.5) + 
+  scale_edge_color_viridis(discrete=FALSE, option="inferno", 
+                           #direction=-1,
+                           name="Transmission\n events")+
+  theme_void()+
+  theme(text=element_text(size=21,  family="serif"),
+        legend.position=c(1.04, 0.6), #adjust location of legend
+        plot.margin=unit(c(2,5,0,0), "cm") #adjust margins
+        )+
+  ggsn::scalebar(Iowa, location="topleft", dist = 50, dist_unit = "km", 
+                 transform=TRUE, 
+                 model="WGS84", 
+                height=0.03, #height of scale bar
+                st.dist=0.03, #distance of scale bar from text
+                 family="serif",
+                anchor=c(x=-91.0, #anchor location of bottom right corner
+                         y=40.4)
+                )
+  
+ggsave("./figures/geo_transm_network.png", width=11, height=8)  
+
+```
